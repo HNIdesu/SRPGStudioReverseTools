@@ -61,6 +61,7 @@ def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,s
 
 def extract_dts(filepath:str,password:str|None,savedir:str):
     os.makedirs(savedir,exist_ok=True)
+    filesize=os.stat(filepath).st_size
     with open(filepath,"rb") as br:
         signature=br.read(4)
         if signature != b"SDTS":
@@ -71,6 +72,7 @@ def extract_dts(filepath:str,password:str|None,savedir:str):
         version=int.from_bytes(br.read(4),byteorder="little")
         _=br.read(8)
         project_offset=int.from_bytes(br.read(4),byteorder="little")+168
+        project_length=filesize-project_offset
         offsets=list[int]()
         for _ in range(0,len(known_entry_names)+1):
             offsets.append(int.from_bytes(br.read(4),byteorder="little"))
@@ -80,6 +82,13 @@ def extract_dts(filepath:str,password:str|None,savedir:str):
             entry_name=known_entry_names[i]
             br.seek(entry_position,0)
             extract_entry(br,(entry_name,entry_position,entry_length),password,savedir)
+
+        with open(Path.join(savedir,"Project.srpgs"),"wb") as bw:
+            br.seek(project_offset)
+            data=br.read(project_length)
+            if password:
+                data=decrypt_asset(data,password)
+            bw.write(data)
 
 def extract_srk(filepath:str,password:str,savedir:str):
     os.makedirs(savedir,exist_ok=True)
