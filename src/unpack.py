@@ -25,7 +25,7 @@ def decrypt_asset(input_buf:bytes,password:str)->bytes:
 
 
 def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,savedir:str):
-    (name,entry_position,length)=entry
+    (entry_name,entry_position,length)=entry
     if length==0:return
     entry_position=br.tell()
     resource_group_count=int.from_bytes(br.read(4),byteorder="little")
@@ -55,9 +55,16 @@ def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,s
                 ext="."+ext
             else:
                 ext=".unknown"
-            resource_group_save_dir=Path.join(savedir,name,resource_group_name)
-            os.makedirs(resource_group_save_dir,exist_ok=True)
-            with open(Path.join(resource_group_save_dir,f"{i:04d}{ext}"),"wb") as bw:
+            
+            if resource_count==1:
+                resource_group_save_dir=Path.join(savedir,entry_name)
+                os.makedirs(resource_group_save_dir,exist_ok=True)
+                resource_save_path=Path.join(resource_group_save_dir,f"{resource_group_name}{ext}")
+            else:
+                resource_group_save_dir=Path.join(savedir,entry_name,resource_group_name)
+                os.makedirs(resource_group_save_dir,exist_ok=True)
+                resource_save_path=Path.join(resource_group_save_dir,f"{i:04d}{ext}")
+            with open(resource_save_path,"wb") as bw:
                 bw.write(data)
 
 def extract_dts(filepath:str,password:str|None,savedir:str):
