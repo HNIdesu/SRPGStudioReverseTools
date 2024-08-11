@@ -36,6 +36,7 @@ def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,s
         resource_group_position=offsets[i]+entry_position
         br.seek(resource_group_position,0)
         resource_group_name=br.read(int.from_bytes(br.read(4),byteorder="little"))[:-2].decode("utf-16le")
+        resource_group_name=resource_group_name.strip()
         _=br.read(8)
         resource_count=int.from_bytes(br.read(4),byteorder="little")
         resource_lengths=list[int]()
