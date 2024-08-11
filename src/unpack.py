@@ -66,8 +66,10 @@ def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,s
                 resource_save_path=Path.join(resource_group_save_dir,f"{i:04d}{ext}")
             with open(resource_save_path,"wb") as bw:
                 bw.write(data)
+            print(resource_save_path)
 
 def extract_dts(filepath:str,password:str|None,savedir:str):
+    print(f"start to extract {filepath}")
     os.makedirs(savedir,exist_ok=True)
     filesize=os.stat(filepath).st_size
     with open(filepath,"rb") as br:
@@ -90,15 +92,17 @@ def extract_dts(filepath:str,password:str|None,savedir:str):
             entry_name=known_entry_names[i]
             br.seek(entry_position,0)
             extract_entry(br,(entry_name,entry_position,entry_length),password,savedir)
-
-        with open(Path.join(savedir,"Project.srpgs"),"wb") as bw:
+        project_file_path=Path.join(savedir,"Project.srpgs")
+        with open(project_file_path,"wb") as bw:
             br.seek(project_offset)
             data=br.read(project_length)
             if password:
                 data=decrypt_asset(data,password)
             bw.write(data)
+        print(project_file_path)
 
 def extract_srk(filepath:str,password:str,savedir:str):
+    print(f"start to decrypt {filepath}")
     os.makedirs(savedir,exist_ok=True)
     raw_data=None
     with open(filepath,"rb") as br:
@@ -108,8 +112,10 @@ def extract_srk(filepath:str,password:str,savedir:str):
         ext="."+ext
     else:
         ext=".unknown"
-    with open(pathlib.Path(Path.join(savedir,Path.basename(filename))).with_suffix(ext),"wb") as br:
+    save_path=pathlib.Path(Path.join(savedir,Path.basename(filename))).with_suffix(ext)
+    with open(save_path,"wb") as br:
         br.write(raw_data)
+    print(f"file saved to {save_path.absolute()}")
     
 parser=argparse.ArgumentParser()
 parser.add_argument("game_directory")
@@ -129,5 +135,6 @@ try:
                 extract_dts(Path.join(rootdir,filename),password,output_directory)
             elif filename.endswith(".srk"):
                 extract_srk(Path.join(rootdir,filename),password,Path.join(output_directory,Path.relpath(rootdir,game_directory)))
+    print("completed")
 except InvalidDataError as e:
     print(e)
