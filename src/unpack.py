@@ -23,19 +23,32 @@ def decrypt_asset(input_buf:bytes,password:str)->bytes:
     decrypted_data = cipher.decrypt(input_buf)
     return decrypted_data
 
-def extract_scripts_entry(br:BufferedReader,entry:tuple[str,int,int],savedir:str):
+def extract_script_entry(br:BufferedReader,entry:tuple[str,int,int],savedir:str):
     (entry_name,entry_position)=entry
     scripts_count=int.from_bytes(br.read(4),byteorder="little")
     for _ in range(0,scripts_count):
         script_path=br.read(int.from_bytes(br.read(4),byteorder="little"))[:-2].decode("utf-16le")
         script_length=int.from_bytes(br.read(4),byteorder="little")
-        script_data=br.read(script_length)[:-2].decode("utf-16le")
+        script_data=br.read(script_length)[:-2]
+        if script_data[:2]!=b'\xff\xfe':
+            script_data=b'\xff\xfe'+script_data
         script_save_path=Path.join(savedir,entry_name,script_path)
         os.makedirs(Path.dirname(script_save_path),exist_ok=True)
-        with open(script_save_path,"w",encoding="utf-8") as sw:
-            sw.write(script_data)
+        with open(script_save_path,"wb") as bw:
+            bw.write(script_data)
         print(script_save_path)
-
+        
+def extract_materials(br:BufferedReader,savedir:str):
+    material_count=int.from_bytes(br.read(4),byteorder="little")
+    for _ in range(0,material_count):
+        material_path=br.read(int.from_bytes(br.read(4),byteorder="little"))[:-2].decode("utf-16le")
+        length=int.from_bytes(br.read(4),byteorder="little")
+        data=br.read(length)
+        save_path=Path.join(savedir,"Material",material_path)
+        os.makedirs(Path.dirname(save_path),exist_ok=True)
+        with open(save_path,"wb") as bw:
+            bw.write(data)
+        print(save_path)
 def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,savedir:str):
     (entry_name,entry_position)=entry
     resource_group_count=int.from_bytes(br.read(4),byteorder="little")
@@ -108,7 +121,10 @@ def extract_dts(filepath:str,password:str|None,savedir:str):
                 extract_entry(br,(entry_name,entry_position),password,savedir)
             else:
                 if(project_position-entry_position==0):continue
-                extract_scripts_entry(br,(entry_name,entry_position),savedir)
+                extract_script_entry(br,(entry_name,entry_position),savedir)
+                if(project_position-br.tell()>0):
+                    extract_materials(br,savedir)
+                
         project_file_path=Path.join(savedir,"Project.srpgs")
         with open(project_file_path,"wb") as bw:
             br.seek(project_position)
