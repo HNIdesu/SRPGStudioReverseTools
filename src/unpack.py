@@ -79,6 +79,7 @@ def extract_dts(filepath:str,password:str|None,savedir:str):
         is_encrypted=int.from_bytes(br.read(4),byteorder="little")==1
         if is_encrypted and (not password):
             raise InvalidDataError("password is required")
+        if not is_encrypted:password=None
         version=int.from_bytes(br.read(4),byteorder="little")
         _=br.read(8)
         project_offset=int.from_bytes(br.read(4),byteorder="little")+168
