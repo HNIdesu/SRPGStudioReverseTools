@@ -33,5 +33,6 @@ known_entry_names = (
     "Audio/music",
     "Audio/sound",
     "Fonts",
-    "Video"
+    "Video",
+    "Script"
 )

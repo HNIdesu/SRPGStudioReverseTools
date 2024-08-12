@@ -23,12 +23,24 @@ def decrypt_asset(input_buf:bytes,password:str)->bytes:
     decrypted_data = cipher.decrypt(input_buf)
     return decrypted_data
 
+def extract_scripts_entry(br:BufferedReader,entry:tuple[str,int,int],savedir:str):
+    (entry_name,entry_position)=entry
+    scripts_count=int.from_bytes(br.read(4),byteorder="little")
+    for _ in range(0,scripts_count):
+        script_path=br.read(int.from_bytes(br.read(4),byteorder="little"))[:-2].decode("utf-16le")
+        script_length=int.from_bytes(br.read(4),byteorder="little")
+        script_data=br.read(script_length)[:-2].decode("utf-16le")
+        script_save_path=Path.join(savedir,entry_name,script_path)
+        os.makedirs(Path.dirname(script_save_path),exist_ok=True)
+        with open(script_save_path,"w",encoding="utf-8") as sw:
+            sw.write(script_data)
+        print(script_save_path)
 
 def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,savedir:str):
-    (entry_name,entry_position,length)=entry
-    if length==0:return
-    entry_position=br.tell()
+    (entry_name,entry_position)=entry
     resource_group_count=int.from_bytes(br.read(4),byteorder="little")
+    if resource_group_count==0:
+        return
     offsets=list[int]()
     for _ in range(0,resource_group_count+1):
         offsets.append(int.from_bytes(br.read(4),byteorder="little"))
@@ -82,20 +94,24 @@ def extract_dts(filepath:str,password:str|None,savedir:str):
         if not is_encrypted:password=None
         version=int.from_bytes(br.read(4),byteorder="little")
         _=br.read(8)
-        project_offset=int.from_bytes(br.read(4),byteorder="little")+168
-        project_length=filesize-project_offset
+        project_position=int.from_bytes(br.read(4),byteorder="little")+168
+        project_length=filesize-project_position
         offsets=list[int]()
-        for _ in range(0,len(known_entry_names)+1):
+        for _ in range(0,len(known_entry_names)):
             offsets.append(int.from_bytes(br.read(4),byteorder="little"))
         for i in range(0,len(known_entry_names)):
             entry_position=offsets[i]+168
-            entry_length=offsets[i+1]-offsets[i]
             entry_name=known_entry_names[i]
             br.seek(entry_position,0)
-            extract_entry(br,(entry_name,entry_position,entry_length),password,savedir)
+            if((i+1)<len(offsets)):
+                if(offsets[i+1]-offsets[i]==0):continue
+                extract_entry(br,(entry_name,entry_position),password,savedir)
+            else:
+                if(project_position-entry_position==0):continue
+                extract_scripts_entry(br,(entry_name,entry_position),savedir)
         project_file_path=Path.join(savedir,"Project.srpgs")
         with open(project_file_path,"wb") as bw:
-            br.seek(project_offset)
+            br.seek(project_position)
             data=br.read(project_length)
             if password:
                 data=decrypt_asset(data,password)
