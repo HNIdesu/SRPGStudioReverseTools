@@ -1,4 +1,3 @@
-import json
 import sys
 import os
 import argparse
@@ -11,9 +10,6 @@ from constants import known_entry_names
 import filetype
 from Crypto.Cipher import ARC4
 from Crypto.Hash import MD5
-
-packinfo=dict[str,any]()
-packinfo["scripts"]=list[str]()
 
 class InvalidDataError(Exception):
     pass
@@ -40,7 +36,6 @@ def extract_script_entry(br:BufferedReader,entry:tuple[str,int,int],savedir:str)
         os.makedirs(Path.dirname(script_save_path),exist_ok=True)
         with open(script_save_path,"wb") as bw:
             bw.write(script_data)
-        packinfo["scripts"].append(script_path)
         print(script_save_path)
         
 def extract_materials(br:BufferedReader,savedir:str):
@@ -54,44 +49,26 @@ def extract_materials(br:BufferedReader,savedir:str):
         with open(save_path,"wb") as bw:
             bw.write(data)
         print(save_path)
-resource_group_id_dict=dict[str,int]()
-
-def sanitize_filename(filename, replacement='_')->str:
-    illegal_chars = '<>:"/\\|?*'
-    sanitized = ''.join(replacement if c in illegal_chars else c for c in filename)
-    index=0
-    for i in range(0,len(sanitized)):
-        if not sanitized[i]==' ':
-            index=i
-            break
-    sanitized=sanitized[index:]
-    for i in range(len(sanitized)-1,-1,-1):
-        if not (sanitized[i]==' ' or sanitized[i]=='.'):
-            index=i
-            break
-    sanitized=sanitized[:index+1]
-    return sanitized
-
 def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,savedir:str):
     (entry_name,entry_position)=entry
     resource_group_count=int.from_bytes(br.read(4),byteorder="little")
     if resource_group_count==0:
         return
     offsets=list[int]()
-    for _ in range(0,resource_group_count):
+    for _ in range(0,resource_group_count+1):
         offsets.append(int.from_bytes(br.read(4),byteorder="little"))
     for i in range(0,resource_group_count):
         resource_group_position=offsets[i]+entry_position
         br.seek(resource_group_position,0)
         resource_group_name=br.read(int.from_bytes(br.read(4),byteorder="little"))[:-2].decode("utf-16le")
-        resource_group_name=sanitize_filename(resource_group_name)
-        resource_group_id_dict[MD5.new(f"{entry_name}/{resource_group_name}".encode("utf-8")).hexdigest()]=int.from_bytes(br.read(8),byteorder="little")
+        resource_group_name=resource_group_name.strip()
+        _=br.read(8)
         resource_count=int.from_bytes(br.read(4),byteorder="little")
         resource_lengths=list[int]()
         for _ in range(0,resource_count):
             resource_lengths.append(int.from_bytes(br.read(4),byteorder="little"))
-        for j in range(0,resource_count):
-            resource_length=resource_lengths[j]
+        for i in range(0,resource_count):
+            resource_length=resource_lengths[i]
             data=None
             if password:
                 encrypted_data=br.read(resource_length)
@@ -103,32 +80,33 @@ def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,s
                 ext="."+ext
             else:
                 ext=".unknown"
-            resource_group_save_dir=Path.join(savedir,entry_name,resource_group_name)
-            os.makedirs(resource_group_save_dir,exist_ok=True)
-            resource_save_path=Path.join(resource_group_save_dir,f"{j:04d}{ext}")
+            
+            if resource_count==1:
+                resource_group_save_dir=Path.join(savedir,entry_name)
+                os.makedirs(resource_group_save_dir,exist_ok=True)
+                resource_save_path=Path.join(resource_group_save_dir,f"{resource_group_name}{ext}")
+            else:
+                resource_group_save_dir=Path.join(savedir,entry_name,resource_group_name)
+                os.makedirs(resource_group_save_dir,exist_ok=True)
+                resource_save_path=Path.join(resource_group_save_dir,f"{i:04d}{ext}")
             with open(resource_save_path,"wb") as bw:
                 bw.write(data)
             print(resource_save_path)
 
 def extract_dts(filepath:str,password:str|None,savedir:str):
     print(f"start to extract {filepath}")
-    packinfo["password"]=password
     os.makedirs(savedir,exist_ok=True)
     filesize=os.stat(filepath).st_size
     with open(filepath,"rb") as br:
         signature=br.read(4)
         if signature != b"SDTS":
             raise InvalidDataError("signature mismatch")
-        is_encrypted=int.from_bytes(br.read(4),byteorder="little")
-        packinfo["encrypted"]=is_encrypted
-        if (is_encrypted==1) and (not password):
+        is_encrypted=int.from_bytes(br.read(4),byteorder="little")==1
+        if is_encrypted and (not password):
             raise InvalidDataError("password is required")
         if not is_encrypted:password=None
         version=int.from_bytes(br.read(4),byteorder="little")
-        packinfo["version"]=version
-        _=br.read(4)
-        flag=int.from_bytes(br.read(4),byteorder="little")
-        packinfo["flag"]=flag
+        _=br.read(8)
         project_position=int.from_bytes(br.read(4),byteorder="little")+168
         project_length=filesize-project_position
         offsets=list[int]()
@@ -182,19 +160,14 @@ args=parser.parse_args(sys.argv[1:])
 game_directory:str=args.game_directory
 password:str=args.password
 output_directory:str=args.output_directory
-if not Path.exists(game_directory):
-    print(f"game directroy {game_directory} not exist")
-    exit(-1)
+
 try:
     for rootdir,_,filenames in os.walk(game_directory):
         for filename in filenames:
             if filename == "data.dts":
-                extract_dts(Path.join(rootdir,filename),password,Path.join(output_directory,"$data.dts"))
+                extract_dts(Path.join(rootdir,filename),password,output_directory)
             elif filename.endswith(".srk"):
                 extract_srk(Path.join(rootdir,filename),password,Path.join(output_directory,Path.relpath(rootdir,game_directory)))
-    packinfo["resource_group_index_dict"]=resource_group_id_dict
-    with open(Path.join(output_directory,"$info.json"),"w",encoding="utf-8") as sw:
-        sw.write(json.dumps(packinfo))
     print("completed")
 except InvalidDataError as e:
     print(e)
