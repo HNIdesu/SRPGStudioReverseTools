@@ -6,22 +6,22 @@ import pathlib
 import os.path as Path
 from io import BufferedReader
 from constants import known_entry_names
+import base64
 
 # third-party libraries
 import filetype
 from Crypto.Cipher import ARC4
 from Crypto.Hash import MD5
 
-packinfo=dict[str,any]()
+packinfo=dict()
 packinfo["scripts"]=list[str]()
 
 class InvalidDataError(Exception):
     pass
 
-def decrypt_asset(input_buf:bytes,password:str)->bytes:
+def decrypt_asset(input_buf:bytes,key:bytes)->bytes:
     h = MD5.new()
-    pwd=password.encode("utf-16le")
-    h.update(pwd)
+    h.update(key)
     key = h.digest()
     cipher = ARC4.new(key)
     decrypted_data = cipher.decrypt(input_buf)
@@ -72,7 +72,7 @@ def sanitize_filename(filename, replacement='_')->str:
     sanitized=sanitized[:index+1]
     return sanitized
 
-def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,savedir:str):
+def extract_entry(br:BufferedReader,entry:tuple[str,int,int],key:bytes|None,savedir:str):
     (entry_name,entry_position)=entry
     resource_group_count=int.from_bytes(br.read(4),byteorder="little")
     if resource_group_count==0:
@@ -93,9 +93,9 @@ def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,s
         for j in range(0,resource_count):
             resource_length=resource_lengths[j]
             data=None
-            if password:
+            if key:
                 encrypted_data=br.read(resource_length)
-                data=decrypt_asset(encrypted_data,password)
+                data=decrypt_asset(encrypted_data,key)
             else:
                 data=br.read(resource_length)
             ext=filetype.guess_extension(data)
@@ -110,9 +110,10 @@ def extract_entry(br:BufferedReader,entry:tuple[str,int,int],password:str|None,s
                 bw.write(data)
             print(resource_save_path)
 
-def extract_dts(filepath:str,password:str|None,savedir:str):
+def extract_dts(filepath:str,key:bytes|None,savedir:str):
     print(f"start to extract {filepath}")
-    packinfo["password"]=password
+    if key:
+        packinfo["key"]=base64.b64encode(key).decode()
     os.makedirs(savedir,exist_ok=True)
     filesize=os.stat(filepath).st_size
     with open(filepath,"rb") as br:
@@ -121,9 +122,9 @@ def extract_dts(filepath:str,password:str|None,savedir:str):
             raise InvalidDataError("signature mismatch")
         is_encrypted=int.from_bytes(br.read(4),byteorder="little")
         packinfo["encrypted"]=is_encrypted
-        if (is_encrypted==1) and (not password):
-            raise InvalidDataError("password is required")
-        if not is_encrypted:password=None
+        if (is_encrypted==1) and (not key):
+            raise InvalidDataError("key is required")
+        if not is_encrypted:key=None
         version=int.from_bytes(br.read(4),byteorder="little")
         packinfo["version"]=version
         _=br.read(4)
@@ -140,7 +141,7 @@ def extract_dts(filepath:str,password:str|None,savedir:str):
             br.seek(entry_position,0)
             if((i+1)<len(offsets)):
                 if(offsets[i+1]-offsets[i]==0):continue
-                extract_entry(br,(entry_name,entry_position),password,savedir)
+                extract_entry(br,(entry_name,entry_position),key,savedir)
             else:
                 if(project_position-entry_position==0):continue
                 extract_script_entry(br,(entry_name,entry_position),savedir)
@@ -151,17 +152,17 @@ def extract_dts(filepath:str,password:str|None,savedir:str):
         with open(project_file_path,"wb") as bw:
             br.seek(project_position)
             data=br.read(project_length)
-            if password:
-                data=decrypt_asset(data,password)
+            if key:
+                data=decrypt_asset(data,key)
             bw.write(data)
         print(project_file_path)
 
-def extract_srk(filepath:str,password:str,savedir:str):
+def extract_srk(filepath:str,key:bytes,savedir:str):
     print(f"start to decrypt {filepath}")
     os.makedirs(savedir,exist_ok=True)
     raw_data=None
     with open(filepath,"rb") as br:
-        raw_data=decrypt_asset(br.read(),password)
+        raw_data=decrypt_asset(br.read(),key)
     ext=filetype.guess_extension(raw_data)
     if ext:
         ext="."+ext
@@ -175,12 +176,16 @@ def extract_srk(filepath:str,password:str,savedir:str):
 parser=argparse.ArgumentParser()
 parser.add_argument("game_directory")
 parser.add_argument("-p","--password",required=False ,default="key")
+parser.add_argument("--keyfile",type=str,default="")
 parser.add_argument("-o","--output_directory",required=False ,default="output")
 
 args=parser.parse_args(sys.argv[1:])
 
 game_directory:str=args.game_directory
-password:str=args.password
+key: bytes = args.password.encode("utf-16le")
+if hasattr(args, "keyfile"):
+    with open(args.keyfile,"rb") as f:
+        key = f.read()
 output_directory:str=args.output_directory
 if not Path.exists(game_directory):
     print(f"game directroy {game_directory} not exist")
@@ -189,9 +194,9 @@ try:
     for rootdir,_,filenames in os.walk(game_directory):
         for filename in filenames:
             if filename == "data.dts":
-                extract_dts(Path.join(rootdir,filename),password,Path.join(output_directory,"$data.dts"))
+                extract_dts(Path.join(rootdir,filename),key,Path.join(output_directory,"$data.dts"))
             elif filename.endswith(".srk"):
-                extract_srk(Path.join(rootdir,filename),password,Path.join(output_directory,Path.relpath(rootdir,game_directory)))
+                extract_srk(Path.join(rootdir,filename),key,Path.join(output_directory,Path.relpath(rootdir,game_directory)))
     packinfo["resource_group_index_dict"]=resource_group_id_dict
     with open(Path.join(output_directory,"$info.json"),"w",encoding="utf-8") as sw:
         sw.write(json.dumps(packinfo))
