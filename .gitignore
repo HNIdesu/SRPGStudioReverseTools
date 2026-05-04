@@ -2,3 +2,5 @@ output
 venv
 __pycache__
 .vscode
+dist
+build
