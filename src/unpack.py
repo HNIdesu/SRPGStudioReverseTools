@@ -27,7 +27,7 @@ def decrypt_asset(input_buf:bytes,key:bytes)->bytes:
     decrypted_data = cipher.decrypt(input_buf)
     return decrypted_data
 
-def extract_script_entry(br:BufferedReader,entry:tuple[str,int,int],savedir:str):
+def extract_script_entry(br:BufferedReader,entry:tuple[str,int],savedir:str):
     (entry_name,entry_position)=entry
     scripts_count=int.from_bytes(br.read(4),byteorder="little")
     for _ in range(0,scripts_count):
@@ -72,7 +72,7 @@ def sanitize_filename(filename, replacement='_')->str:
     sanitized=sanitized[:index+1]
     return sanitized
 
-def extract_entry(br:BufferedReader,entry:tuple[str,int,int],key:bytes|None,savedir:str):
+def extract_entry(br:BufferedReader,entry:tuple[str,int],key:bytes|None,savedir:str):
     (entry_name,entry_position)=entry
     resource_group_count=int.from_bytes(br.read(4),byteorder="little")
     if resource_group_count==0:
