@@ -17,7 +17,7 @@ pip install filetype pycryptodome
 Use the following command to extract or decrypt game resources:
 
 ```bash
-python extract.py game_directory [-p password] [-o output_directory]
+python extract.py game_directory [-p password] [-o output_directory] [--keyfile keyfile]
 ```
 
 ### Repacking Game Resources
@@ -25,11 +25,21 @@ After extracting or modifying resources, you can repack them using these command
 
 ```bash
 # Unpack resources to prepare for repacking
-python unpack.py game_directory [-p password] [-o output_directory]
+python unpack.py game_directory [-p password] [-o output_directory] [--keyfile keyfile]
 
 # Repack the resources into the original format
 python pack.py directory [-o output_directory]
 ```
+
+### Extract key file from game files (Optional)
+Some games include an internal encryption key, while others do not.
+In most cases, using the default password is enough to decrypt resources.
+
+If decryption fails with the default password, try extracting the key file:
+```
+python extract_key.py game_directory [-o keyfile]
+```
+If no output file is specified, the key is saved as key.bin by default.
 
 ### Supported File Types
 The scripts currently support the following file types:
@@ -42,6 +52,7 @@ These scripts have been tested with the following versions of the SRPG Studio Ga
 
 - v1.279
 - v1.291
+- v1.320
 
 ## References
 - [godoway/SRPG-Studio-extractor](https://github.com/godoway/SRPG-Studio-extractor)
