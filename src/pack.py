@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 import pathlib
 from constants import known_entry_names
 import json
+import base64
 
 # third-party libraries
 from Crypto.Cipher import ARC4
@@ -20,10 +21,9 @@ directory=args.directory
 output_direcory=args.output_dir
 
 
-def encrypt_asset(input_buf:bytes,password:str)->bytes:
+def encrypt_asset(input_buf:bytes,key:bytes)->bytes:
     h = MD5.new()
-    pwd=password.encode("utf-16le")
-    h.update(pwd)
+    h.update(key)
     key = h.digest()
     cipher = ARC4.new(key)
     encrypted_data = cipher.encrypt(input_buf)
@@ -36,7 +36,7 @@ def write_string(bw:BufferedWriter,s:str):
 
 with open(Path.join(directory,"$info.json"),"r",encoding="utf-8") as br:
     packinfo=json.loads(br.read())
-password=packinfo["password"]
+key=base64.b64decode(packinfo["key"])
 is_encrypted=packinfo["encrypted"]!=0
 os.makedirs(output_direcory,exist_ok=True)
 
@@ -87,7 +87,7 @@ with open(Path.join(output_direcory,"data.dts"),"wb") as bw:
                 with open(resource,"rb") as br:
                     data=br.read()
                 if is_encrypted:
-                    data=encrypt_asset(data,password)
+                    data=encrypt_asset(data,key)
                 resource_length_list.append(len(data))
                 bw.write(data)
             mark=bw.tell()
@@ -130,7 +130,7 @@ with open(Path.join(output_direcory,"data.dts"),"wb") as bw:
     with open(Path.join(directory,"$data.dts","Project.srpgs"),"rb") as br:
         project_data=br.read()
         if is_encrypted:
-            project_data=encrypt_asset(project_data,password)
+            project_data=encrypt_asset(project_data,key)
         bw.write(project_data)
     bw.seek(entry_offset_mark,0)
     for offset in entry_offset_list:
@@ -147,4 +147,4 @@ for entry_name in known_entry_names:
             dest_filepath=pathlib.Path(Path.join(output_direcory,entry_name,filename)).with_suffix(".srk")
             with open(sour_filepath,"rb") as br:
                 with open(dest_filepath,"wb") as bw:
-                    bw.write(encrypt_asset(br.read(),password))
+                    bw.write(encrypt_asset(br.read(),key))
